@@ -3,69 +3,93 @@
  - Copyright 2013 Lucio Tato
 */
 "use strict";
-function Task(stepsArray){
+function Task(stepsArray,onErr){
     this.steps = stepsArray;
+    this.onErr = onErr;
 }
 
 Task.prototype = {
 
-    launch:function(arg){ //launch this task
-        this.arg = arg;
-        this.activeStep=0;
-        this.step();
+    clone: function(){
+        var cloned=new Task();
+        for(var prop in this){
+            if (this.hasOwnProperty(prop)){
+                var value=this[prop];
+                if (Array.isArray(value)){
+                    value=value.slice(0);//shallow copy
+                }
+                cloned[prop]=value;
+            }
+        }
+        return cloned;
     }
 
-    ,launchFiber:function(task, arg){ //launch other task
-        task.launch(arg);
+    ,launch:function(args){ //launch (a copy of) this task
+        var fiber = this.clone();
+        fiber.args = args;
+        fiber.stack = {};
+        fiber.err = undefined;
+        fiber.data = args;
+        fiber.activeStep=0;
+        fiber.step();
+    }
+
+    ,launchFiber:function(task, args){ //launch other task
+        task.launch(args);
         }
 
     ,step : function(){
+
         var self=this;
+        self.insertPoint=self.activeStep+1; //reset insert point
+
         var item=self.steps[self.activeStep];
         if (item) {
             var fn;
             if (typeof item === 'object') {
-                if (item.arg) self.arg=item.arg;
+                if (item.args) self.args=item.args;
                 fn=item.fn;
             }
             else fn=item;
 
-            if (typeof fn !== 'function') throw new Error('steps['+n+'] must be a function or {fn:xx, arg:yy}');
-            if (self.activeStep===0) self.data=self.arg; //first 'data' is arg
+            self.activeStepName = fn.name;
+            if (typeof fn !== 'function') return self.handleErr('steps['+n+'] must be a function or {fn:xx, data:yy}');
 
             //call step n
-            var yielded = fn.call(null, self, self.data); //wat.data is the second parameter
-            if (yielded instanceof Task.forCalled) { //if return wait.for(...
-                    // call async fn
-                    yielded.async.apply(yielded.async_this, yielded.async_args, function(err,data){
+            try { var yielded = fn.call(null, self, self.data); } //wait.data is the second parameter
+            catch(err) { if (!self.handleErr(err)) return; } //end execution if not handled
+            if (yielded instanceof Task.prototype.forCalled) { //if step ended with: return wait.for(...
+                    //add callback
+                    yielded.async_args.push( function(err,data){
                             // when done
-                            self.err = err;
                             self.data = data;
-                            if (err) {
-                                if (self.onErr) {
-                                            if (self.onErr(err)!==true) { //! true => exit,   true => continue
-                                                self.onEnd && self.onEnd(err);
-                                                return; //end execution
-                                            }
-                                }
-                                else { //no onErr defined -> throw
-                                    if (self.onEnd) self.onEnd(err); else throw err;
-                                }
-                            };
+                            if (err && !self.handleErr(err)) return; //end execution if err and not handled
                             // call next step
                             self.activeStep++;
                             return self.step();
                     });
+                    // call async fn
+                    try { yielded.async.apply(yielded.async_this, yielded.async_args); }
+                    catch(err) { if (!self.handleErr(err)) return; } //end execution if not handled
             }
             else { //step returned other than "wait.for(..."
-                self.onEnd && self.onEnd(null,yielded);
-                return yielded;
+                self.data = yielded;
+                // call next step
+                self.activeStep++;
+                return self.step();
             }
         }
         else { //no more steps
             self.onEnd && self.onEnd(null,self.data);
             return self.data; //return last data from last async
         }
+    }
+
+    , handleErr: function(err){
+        if (typeof err === "string") err=new Error(err);
+        this.err=err;
+        if (this.onErr) return this.onErr(this,err);
+            else throw err;
     }
 
     ,forCalled: function(thisValue,fn,args){ // CONSTRUCTOR
@@ -76,37 +100,56 @@ Task.prototype = {
 
     ,for: function(fn){ // return wait.for(fn,arg1,arg2,...) } ] , [ function(wait) {....
 
-        if (typeof fn !== 'function') throw new Error('wait.for: first argument must be an async function');
+        if (typeof fn !== 'function') return this.handleErr('wait.for: first argument must be an async function');
 
-        var newargs=Array.prototype.slice.call(arguments,1); // remove function from arg
+        var newargs=Array.prototype.slice.call(arguments,1); // remove function from data
 
-        return new Task.forCalled(null,fn,newargs); //return instance of Task.forCalled
+        return new Task.prototype.forCalled(null,fn,newargs); //return instance of Task.prototype.forCalled
     }
 
-    ,insert: function (fn, arg){
-        if (typeof fn !== 'function') throw new Error('insert: first argument must be a function. or use insertStep()');
+    ,forMethod: function(obj,methodName){ // return wait.forMethod(obj,fn,arg1,arg2,...) } ] , [ function(wait) {....
+
+        var method=obj[methodName];
+        if (!method) throw new Error('wait.forMethod: second argument must be the async method name (string)');
+
+        var newargs=Array.prototype.slice.call(arguments,2); // remove obj and method name from data
+        return new Task.prototype.forCalled(obj,method,newargs);
+    }
+
+    ,insert: function (fn, args){
+        if (typeof fn !== 'function') return this.handleErr('insert: first argument must be a function. or use insertStep()');
         if (!this.insertPoint) this.insertPoint=this.activeStep+1;
-        this.steps.splice(this.insertPoint++,0,{fn:fn,arg:arg});
+        var newItem={fn:fn, inserted:true};
+        if (args!==undefined) newItem.args=args;
+        this.steps.splice(this.insertPoint++,0,newItem);
     }
 
-    ,insertStep: function (task_or_steps, arg){
+    ,insertStep: function (task_or_steps, args){
         var steps = (task_or_steps instanceof Task) ? task_or_steps.steps : task_or_steps;
         for(var n=0;n<steps.length;n++){
-            this.insert(steps[n],arg);
+            this.insert(steps[n],args);
+            args=undefined; //args param only for first step
         }
     }
 
-    ,execute: Task.prototype.insertStep // return wait.execute(task,arg) } ] , [ function(wait) {....
-        //alias for insertStep, solo que se usa con "return wait.execute...
+    ,removeInsertedSteps: function(){
+        for(var n=0;n<this.steps.length;n++){
+            if (this.steps[n].inserted) this.steps.splice(n--,1);
+        }
+    }
 
 };
 
+Task.prototype.execute = Task.prototype.insertStep; //alias for insertStep, solo que se usa con "return wait.execute...
+        // return wait.execute(task,data) } ] , [ function(wait) {....
 
+
+/*
 var wait = {
 
-    launchFiber : function (syncTask, arg){
+    launchFiber : function (syncTask, data){
         syncTask.fiber={
-              arg: arg // fiber.arg = arg (object)
+              data: data // fiber.data = data (object)
               ,task:syncTask
         };
         wait.doStep(0,syncTask);
@@ -116,7 +159,7 @@ var wait = {
         for(var n=0;n<Tasks.length;n++){
             var  syncTask=Tasks[n].task;
             syncTask.fiber={
-                  arg: Tasks[n].arg // fiber.arg = arg (object)
+                  data: Tasks[n].data // fiber.data = data (object)
             };
             wait.doStep(0,syncTask);
         }
@@ -128,7 +171,7 @@ var wait = {
         syncTask.fiber.activeStep = n;
         var fn=syncTask.steps[n];
         if (fn) {
-            if (typeof fn !== 'function') throw new Error('syncTask.steps['+n+'] must be a function');
+            if (typeof fn !== 'function') this.handleErr('syncTask.steps['+n+'] must be a function');
             //call step n
             var yielded = fn.apply(null, syncTask.fiber);
             if (yielded instanceof wait.forCalled) { //if return Wait.for(...
@@ -163,17 +206,17 @@ var wait = {
         }
     }
 
-    ,forCalled: function(thisValue,fn,arg){ // CONSTRUCTOR
+    ,forCalled: function(thisValue,fn,data){ // CONSTRUCTOR
         this.async = fn;
         this.async_this = thisValue;
-        this.async_args = arg;
+        this.async_args = data;
     }
 
     ,for: function(fn){ // return wait.for(fn,arg1,arg2,...) } ] , [ function(fiber) {....
 
         if (typeof fn !== 'function') throw new Error('wait.for: first argument must be an async function');
 
-        var newargs=Array.prototype.slice.call(arguments,1); // remove function from arg
+        var newargs=Array.prototype.slice.call(arguments,1); // remove function from data
 
         return new wait.forCalled(null,fn,newargs); //return instance of Wait.forCalled
     }
@@ -183,7 +226,7 @@ var wait = {
         var method=obj[methodName];
         if (!method) throw new Error('wait.forMethod: second argument must be the async method name (string)');
 
-        var newargs=Array.prototype.slice.call(arguments,2); // remove obj and method name from arg
+        var newargs=Array.prototype.slice.call(arguments,2); // remove obj and method name from data
         return new wait.forCalled(obj,method,newargs);
     }
 
@@ -243,4 +286,5 @@ var parallel = {
     }
 
 };
+*/
 

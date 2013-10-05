@@ -1,22 +1,25 @@
 <!DOCTYPE html>
 <html>
     <head>
-    
+
         <title>wait.for - browser pre ES6-generators</title>
-        
+
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        
+
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"  type="text/javascript" ></script>
-        
+
         <script src="waitfor.js" type="text/javascript"> </script>
-        
+
         <script src="ajax.js" type="text/javascript"> </script>
         <script src="tests.js" type="text/javascript"> </script>
-        
+
     </head>
     <body>
         <div>
             <button onclick="runTests();">Run Tests</button>
+            <button onclick="jQuery_Test1();">jQuery_Test1 - parallel</button>
+            <button onclick="jQuery_Test2();">jQuery_Test2 - sequential</button>
+            <button onclick="waitFor_Test2();">waitFor_Test2 - sequential</button>
         </div>
         <div id="console">
         </div>
