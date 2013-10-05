@@ -11,35 +11,18 @@ var console={
 // ----------------------
 var dns={
     reverse: function(addr,callback){
-        server.get({module:dns, fn:reverse, arg:[addr]}, callback);
+        //server.get({module:dns, fn:reverse, arg:[addr]}, callback);
+        server.getFile("reverse..txt",callback);
     }
     ,resolve4: function(addr,callback){
-        server.get({module:dns, fn:resolve4, arg:[addr]}, callback);
+        //server.get({module:dns, fn:resolve4, arg:[addr]}, callback);
+        server.getFile("resolve4.txt",callback);
     }
 };
-/*
-var syncTask={ steps: [function (fiber){
-    console.log(a);
-    return wait.for(async,jjd); } ,  function(fiber){
-    asd;
-    asdf;
-    asdf;
-    asdf;
-    return wait.for(async,jjd); }  ,  function(fiber){
-    dfsd;
-    asdfasdf;
-    return data;} ],
-    onErr: function (err,fiber)  {
-        console.log(err + ' at step '+fiber.activeStep);
-    }
-};
-
-wait.launchFiber(syncTask);
-*/
 
 var showReverse=new Task( [ function(wait){
-    return wait.for(dns.reverse, fiber.arg); } , function(fiber){
-    console.log("reverse for " + addr + ": " + JSON.stringify(fiber.data));
+    return wait.for(dns.reverse, wait.arg); } , function(wait, result){
+    console.log("reverse for " + wait.arg + ": " + JSON.stringify(result));
 }]);
 
 var sequential_resolve_parallel_reverse = new Task( [ function(wait, hostname){
