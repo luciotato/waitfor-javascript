@@ -34,11 +34,11 @@ var sequential_resolve_parallel_reverse = new Task( [ function(wait){
 
 var sequential_resolve_sequential_reverse = new Task( [ function(wait){
         console.log('dns.resolve4 ',wait.args.hostname);
-        return wait.for(dns.resolve4, wait.args.hostname); }, function(wait,addresses){
-        console.log("addresses: ",JSON.stringify(addresses));
-        console.log("addresses.length: ",addresses.length);
-        for (var i = 0; i < addresses.length; i++) {
-            wait.insertStep(showReverse, {addr:addresses[i]} );
+        return wait.for("addresses",dns.resolve4, wait.args.hostname); }, function(wait){
+        console.log("addresses: ",JSON.stringify(wait.stack.addresses));
+        console.log("addresses.length: ",wait.stack.addresses.length);
+        for (var i = 0; i < wait.stack.addresses.length; i++) {
+            wait.insertStep(showReverse, {addr:wait.stack.addresses[i]} );
         };
         return; } /* inserted steps executed here, sequentially */, function(wait){
         console.log("end of sequential_resolve");
@@ -99,10 +99,10 @@ var testTask=new Task( [ function(wait){
     console.log('METHOD TEST (passing "this" to method.function');
     console.log('--------------------------------');
 
-    return wait.forMethod(theAnswer,'think');},function(wait, result){
-    console.log(result);
-    return wait.forMethod(theWrongAnswer,'think');},function(wait, result){
-    console.log(result);
+    return wait.forMethod("result",theAnswer,'think');},function(wait){
+    console.log(wait.stack.result);
+    return wait.forMethod("wrongAnswer",theWrongAnswer,'think');},function(wait){
+    console.log(wait.stack.wrongAnswer);
     return wait.forMethod(theAnswer,'pingPong','tomato');},function(wait, result){
     console.log(result);
     return wait.forMethod(theWrongAnswer,'pingPong','pera');},function(wait, result){

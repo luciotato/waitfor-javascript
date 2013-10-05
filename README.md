@@ -108,21 +108,19 @@ Catching exceptions with callback hell adds a lot of pain, and i'm not sure if y
 to respond to the user. If somebody like to fix this example... be my guest.
 
 
-***THE SAME CODE***, using **wait.for** (sequential logic - sequential programming):
+Now using **wait.for** (sequential logic - sequential programming):
 ```javascript
 var db = require("some-db-abstraction"), wait=require('wait.for');
 
  var handleWithdrawal = new Task( [ function(wait){
 		wait.stack.amount=wait.args.req.param("amount");
-		return wait.forMethod(db,"select","* from session where session_id=?",req.param("session_id"));},{function(wait,sessiondata){
-		return wait.forMethod(db,"select","* from accounts where user_id=?",sessiondata.user_ID);},{function(wait){
-                   wait.stack.accountdata = wait.data;
+		return wait.forMethod("sessiondata",db,"select","* from session where session_id=?",req.param("session_id"));},{function(wait){
+		return wait.forMethod("accountData", db,"select","* from accounts where user_id=?",wait.stack.sessiondata.user_ID);},{function(wait){
 		if (wait.stack.accountdata.balance < wait.stack.amount) throw new Error('insufficient funds');
 		return wait.forMethod(db,"execute","withdrawal(?,?)",wait.stack.accountdata.ID, wait.args.req.param("amount"));},{function(wait){
 		wait.args.res.write("withdrawal OK, amount: "+ wait.args.req.param("amount"));
-		return wait.forMethod(db,"select","balance from accounts where account_id=?", wait.stack.accountdata.ID);},{function(wait){
-                   wait.stack.balance = wait.data;
-		wait.args.res.end("your current balance is "  + wait.stack.balance.amount);
+		return wait.forMethod("balance", db,"select","balance from accounts where account_id=?", wait.stack.accountdata.ID);},{function(wait){
+		wait.args.res.end("your current balance is "  + wait.stack.balance);
 		}
 	catch(err) {
 		res.end("Withdrawal error: "  + err.message);
@@ -133,59 +131,5 @@ var db = require("some-db-abstraction"), wait=require('wait.for');
 Note: Exceptions will be catched as expected.
 db methods (db.select, db.execute) will be called with this=db
 
-
-What if... Fibers and WaitFor were part of node core?
--
-then you can deprecate almost half the functions at: http://nodejs.org/api/fs.html
-(clue: the *Sync* versions)
-
-Example:
---
-
-pure node.js:
-```javascript
-var fs = require("fs");
-
-fs.readFile('/etc/passwd', function (err, data) {
-	if (err) throw err;
-	console.log(data);
-});
-```
-
-
-using **wait.for**:
-```javascript
-var fs = require("fs"), wait=require('wait.for');
-
-console.log(wait.for(fs.readFile,'/etc/passwd'));
-```
-
-
-
 (see tests.js for more examples)
 
-Usage:
--
-```javascript
-var wait=require('wait.for');
-
-// launch a new fiber
-wait.launchFiber(my_seq_function, arg,arg,...)
-
-// fiber
-function my_seq_function(arg,arg...){
-    // call async_function(arg1), wait for result, return data
-    var myObj = wait.for(async_function, arg1);
-    // call myObj.querydata(arg1,arg2), wait for result, return data
-    var myObjData = wait.forMethod(myObj,'queryData', arg1, arg2);
-    console.log(myObjData.toString());
-}
-```
-
-Roadmap
---
-
- * Parallel execution, launch one fiber for each array item, waits until all fibers complete execution.
-   * **function wait.parallel.map(arr,fn)** return transformed array;
-   * **function wait.parallel.filter(arr,fn)** return filtered array;
-   * Status: working prototypes in [paralell-tests.js](http://github.com/luciotato/waitfor/blob/master/paralell-tests.js)

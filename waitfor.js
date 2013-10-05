@@ -61,8 +61,9 @@ Task.prototype = {
             if (yielded instanceof Task.prototype.forCalled) { //if step ended with: return wait.for(...
                     //add callback
                     yielded.async_args.push( function(err,data){
-                            // when done
+                            // when async done
                             self.data = data;
+                            self.stack[yielded.async_storeOn] = data;
                             if (err && !self.handleErr(err)) return; //end execution if err and not handled
                             // call next step
                             self.activeStep++;
@@ -92,28 +93,40 @@ Task.prototype = {
             else throw err;
     }
 
-    ,forCalled: function(thisValue,fn,args){ // CONSTRUCTOR
+    ,forCalled: function(varName, thisValue,fn,args){ // CONSTRUCTOR
+        this.async_storeOn= varName;
         this.async_this = thisValue;
         this.async = fn;
         this.async_args = args;
     }
 
-    ,for: function(fn){ // return wait.for(fn,arg1,arg2,...) } ] , [ function(wait) {....
-
-        if (typeof fn !== 'function') return this.handleErr('wait.for: first argument must be an async function');
+    ,for: function(fn){ // return wait.for([varName],fn,arg1,arg2,...) } ] , [ function(wait) {....
 
         var newargs=Array.prototype.slice.call(arguments,1); // remove function from data
 
-        return new Task.prototype.forCalled(null,fn,newargs); //return instance of Task.prototype.forCalled
+        var varName="data"; //default storage on wait.stack
+        if (typeof fn === 'string') {
+                varName=fn;
+                fn=newargs.shift(0);
+        }
+        return new Task.prototype.forCalled(varName,null,fn,newargs); //return instance of Task.prototype.forCalled
     }
 
     ,forMethod: function(obj,methodName){ // return wait.forMethod(obj,fn,arg1,arg2,...) } ] , [ function(wait) {....
 
-        var method=obj[methodName];
-        if (!method) throw new Error('wait.forMethod: second argument must be the async method name (string)');
-
         var newargs=Array.prototype.slice.call(arguments,2); // remove obj and method name from data
-        return new Task.prototype.forCalled(obj,method,newargs);
+
+        var varName="data"; //default storage on wait.stack
+        if (typeof obj === 'string') { //first param is string
+                varName=obj;
+                obj=methodName;
+                methodName=newargs.shift(0);
+        }
+
+        var method=obj[methodName];
+        if (!method) throw new Error('wait.forMethod: expected method name (string)');
+
+        return new Task.prototype.forCalled(varName, obj,method,newargs);
     }
 
     ,insert: function (fn, args){
