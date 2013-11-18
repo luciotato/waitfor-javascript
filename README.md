@@ -1,4 +1,4 @@
-Wait.for
+[BETA Version] *Not Ready* -Wait.for-
 ========
 Sequential programming for javascript async function, on the browser, end of callback hell.
 
